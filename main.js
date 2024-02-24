@@ -6,8 +6,6 @@ import { OrbitControls } from 'three/adsons/controls/OrbitControls';
 import { GUI } from 'three/adsons/libs/lil-gui';
 import { Timer } from 'three/adsons/misc/Timer';
 
-const satellite = window.satellite;
-
 const timer = new Timer();
 const date = new Date();
 
@@ -25,7 +23,8 @@ const params = {
   cameraTracking: true,
   axes: false,
   light: {
-    declination: 0
+    declination: 0,
+    azimuth: 0
   },
   jcsat17: {
     height: 0,
@@ -50,7 +49,9 @@ function panelSettings() {
     .onChange(value => { showAxes(value) });
   const light = gui.addFolder('光源');
   light.add(params.light, 'declination', -23.4, 23.4, 0.1).name('赤緯')
-    .onChange(value => { directionalLightPosiotion(value); });
+    .onChange(value => { directionalLightPosiotion(value, params.light.azimuth); });
+  light.add(params.light, 'azimuth', -180.0, 180.0, 0.1).name('方位')
+    .onChange(value => { directionalLightPosiotion(params.light.declination, value); });
   const jcsat17 = gui.addFolder('JCSAT-17');
   jcsat17.add(params.jcsat17, 'height').name('高度(km)').listen().disable();
   jcsat17.add(params.jcsat17, 'latitude').name('緯度(°)').listen().disable();
@@ -140,16 +141,16 @@ const cameraCtrl = new CameraControls();
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 scene.add(directionalLight);
 // 並行光源の位置計算
-function directionalLightPosiotion(declination) {
-  const x = 150000;
-  const y = 0;
-  const z = 0;
+function directionalLightPosiotion(declination, azimuth) {
   const theta = THREE.MathUtils.degToRad(declination);
-  directionalLight.position.x = x * Math.cos(theta) - y * Math.sin(theta);
-  directionalLight.position.y = x * Math.sin(theta) + y * Math.cos(theta);
-  directionalLight.position.z = z;
+  const phi = THREE.MathUtils.degToRad(azimuth);
+  directionalLight.position.x = Math.cos(theta);
+  directionalLight.position.y = Math.sin(theta);
+  const x = directionalLight.position.x;
+  directionalLight.position.x = x * Math.sin(phi);
+  directionalLight.position.z = x * Math.cos(phi);
 }
-directionalLightPosiotion(0);
+directionalLightPosiotion(0, 0);
 // 環境光源
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
 scene.add(ambientLight);
