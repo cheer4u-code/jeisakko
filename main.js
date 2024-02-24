@@ -35,7 +35,8 @@ const params = {
     height: 0,
     latitude: 0,
     longitude: 0
-  }
+  },
+  spaceVisible: true
 };
 timer.setTimescale(params.timeScale);
 
@@ -47,6 +48,8 @@ function panelSettings() {
   gui.add(params, 'cameraTracking').name('自転に追跡');
   gui.add(params, 'axes').name('軸の表示')
     .onChange(value => { showAxes(value) });
+  gui.add(params, 'spaceVisible').name('星の表示')
+    .onChange(value => { space.visible = value });
   const light = gui.addFolder('光源');
   light.add(params.light, 'declination', -23.4, 23.4, 0.1).name('赤緯')
     .onChange(value => { directionalLightPosiotion(value, params.light.azimuth); });
@@ -155,7 +158,7 @@ directionalLightPosiotion(0, 0);
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
 scene.add(ambientLight);
 
-// 宇宙
+// 星
 class Space {
   constructor() {
     this.group = new THREE.Group();
@@ -187,7 +190,9 @@ class Space {
     return this.group;
   }
 }
-scene.add(new Space().getObj3d());
+const space = new Space().getObj3d()
+scene.add(space);
+space.visible = params.spaceVisible;
 
 // 地球
 class Earth {
@@ -250,6 +255,7 @@ class Tle {
   }
 }
 
+// TLE uses data from https://celestrak.org/.
 // JCSAT-17 TLE
 class Jcsat17Tle extends Tle {
   constructor() {
@@ -267,7 +273,7 @@ class Jcsat17Tle extends Tle {
   }
 }
 
-// ISS (ZARYA)             
+// ISS (ZARYA)
 class IssTle extends Tle {
   constructor() {
     const tleLine1 = '1 25544U 98067A   24054.33494424  .00018013  00000+0  31983-3 0  9997';
@@ -293,6 +299,24 @@ class SatContainer {
     for (let sat of SatContainer.sats) {
       sat.update(date);
     }
+  }
+}
+
+// 衛星
+class Sat {
+  constructor(tle, texture = textureLoader.load('./space_jinkoueisei.png'), scale = 1000) {
+    this.tle = tle;
+    const material = new THREE.SpriteMaterial({ map: texture });
+    this.sprite = new THREE.Sprite(material);
+    this.sprite.scale.set(scale, scale, scale);
+  }
+  update(date) {
+    const position = this.tle.update(date);
+    // 衛星の位置設定
+    this.sprite.position.set(position.x, position.y, position.z);
+  }
+  getObj3d() {
+    return this.sprite;
   }
 }
 
@@ -370,28 +394,54 @@ SatContainer.add(jeisakko);
 scene.add(jeisakko.getObj3d());
 
 // ISS
-class Iss {
+class Iss extends Sat {
   constructor(tle) {
-    this.tle = tle;
-    // https://www.skyperfectjsat.space/brand/michikachi/cm/
-    const texture = textureLoader.load('./iss.png');
-    const material = new THREE.SpriteMaterial({ map: texture });
-    this.sprite = new THREE.Sprite(material);
-    const scale = 1500;
-    this.sprite.scale.set(scale, scale, scale);
-  }
-  update(date) {
-    const position = this.tle.update(date);
-    // 衛星の位置設定
-    this.sprite.position.set(position.x, position.y, position.z);
-  }
-  getObj3d() {
-    return this.sprite;
+    super(tle, textureLoader.load('./iss.png'), 1500);
   }
 }
 const iss = new Iss(new IssTle());
 SatContainer.add(iss);
 scene.add(iss.getObj3d());
+
+// その他衛星
+const tles = [
+  [
+    // ALOS (DAICHI)
+    '1 28931U 06002A   24054.85954890  .00001926  00000+0  36670-3 0  9996',
+    '2 28931  98.0235  10.5096 0002031 110.5210 249.6212 14.65171948964235'
+  ],
+  [
+    // QZS-1 (MICHIBIKI-1)
+    '1 37158U 10045A   24053.83766090 -.00000035  00000+0  00000+0 0  9994',
+    '2 37158  43.0976 125.7389 0001594 153.3097 203.3186  0.87715799 48971'
+  ],
+  [
+    // QZS-2 (MICHIBIKI-2)
+    '1 42738U 17028A   24053.42871997 -.00000137  00000+0  00000+0 0  9993',
+    '2 42738  40.7612 255.4098 0748088 270.1575 282.1365  1.00267160 24658'
+  ],
+  [
+    // QZS-3 (MICHIBIKI-3)
+    '1 42917U 17048A   24054.93313174 -.00000353  00000+0  00000+0 0  9999',
+    '2 42917   0.0676 213.5175 0001334 115.0595 287.6737  1.00275216 23790'
+  ],
+  [
+    // QZS-4 (MICHIBIKI-4)
+    '1 42965U 17062A   24053.71455556 -.00000343  00000+0  00000+0 0  9993',
+    '2 42965  40.5653 354.2547 0750364 269.4665 284.4449  1.00286785 23337'
+  ],
+  [
+    // QZS-1R
+    '1 49336U 21096A   24054.43287800 -.00000277  00000+0  00000+0 0  9995',
+    '2 49336  35.7053  92.2720 0747386 269.1147  79.0900  1.00299827  8536'
+  ],
+];
+for (let tle of tles) {
+  console.log(tle);
+  const sat = new Sat(new Tle(tle[0], tle[1]));
+  SatContainer.add(sat);
+  scene.add(sat.getObj3d());
+}
 
 function animate() {
   requestAnimationFrame(animate);
