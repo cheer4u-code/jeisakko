@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/adsons/controls/OrbitControls';
 import { GUI } from 'three/adsons/libs/lil-gui';
 import { Timer } from 'three/adsons/misc/Timer';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer';
 
 const timer = new Timer();
 const date = new Date();
@@ -13,6 +14,12 @@ const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0px';
+document.body.appendChild(labelRenderer.domElement);
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -77,7 +84,26 @@ function showAxes(show) {
     scene.remove(axesHelper);
   }
 }
+function createLabel(text, x, y, z) {
+  const div = document.createElement('div');
+  div.className = 'label';
+  div.textContent = text;
+  div.style.backgroundColor = 'transparent';
+  const label = new CSS2DObject(div);
+  label.position.set(x, y, z);
+  label.center.set(0.5, 0.5);
+  return label;
+}
+const axes = {
+  X: [21000, 0, 0],
+  Y: [0, 21000, 0],
+  Z: [0, 0, 21000]
+};
+for (let k in axes) {
+  axesHelper.add(createLabel(k, axes[k][0], axes[k][1], axes[k][2]));
+}
 showAxes(params.axes);
+
 
 // 座標変換関数
 // satellite.posiotion to Three Axes
@@ -106,7 +132,7 @@ class CameraControls {
       1,
       1000000,
     );
-    this.controls = new OrbitControls(this.camera, renderer.domElement);
+    this.controls = new OrbitControls(this.camera, labelRenderer.domElement);
     const gmst = satellite.gstime(date);
     const position = geodeticToAxes(
       100000,
@@ -236,7 +262,8 @@ scene.add(earth.getObj3d());
 
 // 軌道
 class Tle {
-  constructor(tleLine1, tleLine2) {
+  constructor(name, tleLine1, tleLine2) {
+    this.name = name;
     this.satelliteRecord = satellite.twoline2satrec(tleLine1, tleLine2);
   }
   update(date) {
@@ -261,7 +288,7 @@ class Jcsat17Tle extends Tle {
   constructor() {
     const tleLine1 = '1 45245U 20013A   24053.64424126 -.00000318  00000+0  00000+0 0  9990';
     const tleLine2 = '2 45245   5.6584 349.0000 0004675 336.7019 194.2255  1.00272432 14753';
-    super(tleLine1, tleLine2);
+    super('JCSAT-17', tleLine1, tleLine2);
   }
   update(date) {
     const position = super.update(date);
@@ -278,7 +305,7 @@ class IssTle extends Tle {
   constructor() {
     const tleLine1 = '1 25544U 98067A   24054.33494424  .00018013  00000+0  31983-3 0  9997';
     const tleLine2 = '2 25544  51.6411 164.5373 0002036 314.9686  82.1277 15.50270617440747';
-    super(tleLine1, tleLine2);
+    super('ISS (ZARYA)', tleLine1, tleLine2);
   }
   update(date) {
     const position = super.update(date);
@@ -308,7 +335,7 @@ class Sat {
     this.tle = tle;
     const material = new THREE.SpriteMaterial({ map: texture });
     this.sprite = new THREE.Sprite(material);
-    this.sprite.scale.set(scale, scale, scale);
+    this.sprite.scale.set(scale, scale, 1);
   }
   update(date) {
     const position = this.tle.update(date);
@@ -337,9 +364,14 @@ class Jeisakko {
     const material = new THREE.SpriteMaterial();
     this.sprite = new THREE.Sprite(material);
     const scale = 1500;
-    this.sprite.scale.set(scale, scale, scale);
+    this.sprite.scale.set(scale, scale, 1);
     this.sprite.material.map = this.texture1;
-
+    this.sprite.add(createLabel(
+      this.tle.name,
+      this.sprite.position.x, 
+      this.sprite.position.y - 1,
+      this.sprite.position.z
+      ));
     return this.sprite;
   }
   spriteUpdate(position) {
@@ -404,41 +436,40 @@ SatContainer.add(iss);
 scene.add(iss.getObj3d());
 
 // その他衛星
-const tles = [
-  [
+const tles = {
+  'ALOS (DAICHI)' : [
     // ALOS (DAICHI)
     '1 28931U 06002A   24054.85954890  .00001926  00000+0  36670-3 0  9996',
     '2 28931  98.0235  10.5096 0002031 110.5210 249.6212 14.65171948964235'
   ],
-  [
+  'QZS-1 (MICHIBIKI-1)': [
     // QZS-1 (MICHIBIKI-1)
     '1 37158U 10045A   24053.83766090 -.00000035  00000+0  00000+0 0  9994',
     '2 37158  43.0976 125.7389 0001594 153.3097 203.3186  0.87715799 48971'
   ],
-  [
+  'QZS-2 (MICHIBIKI-2)': [
     // QZS-2 (MICHIBIKI-2)
     '1 42738U 17028A   24053.42871997 -.00000137  00000+0  00000+0 0  9993',
     '2 42738  40.7612 255.4098 0748088 270.1575 282.1365  1.00267160 24658'
   ],
-  [
+  'QZS-3 (MICHIBIKI-3)': [
     // QZS-3 (MICHIBIKI-3)
     '1 42917U 17048A   24054.93313174 -.00000353  00000+0  00000+0 0  9999',
     '2 42917   0.0676 213.5175 0001334 115.0595 287.6737  1.00275216 23790'
   ],
-  [
+  'QZS-3 (MICHIBIKI-3)': [
     // QZS-4 (MICHIBIKI-4)
     '1 42965U 17062A   24053.71455556 -.00000343  00000+0  00000+0 0  9993',
     '2 42965  40.5653 354.2547 0750364 269.4665 284.4449  1.00286785 23337'
   ],
-  [
+  'QZS-1R': [
     // QZS-1R
     '1 49336U 21096A   24054.43287800 -.00000277  00000+0  00000+0 0  9995',
     '2 49336  35.7053  92.2720 0747386 269.1147  79.0900  1.00299827  8536'
   ],
-];
-for (let tle of tles) {
-  console.log(tle);
-  const sat = new Sat(new Tle(tle[0], tle[1]));
+};
+for (let n in tles) {
+  const sat = new Sat(new Tle(n, tles[n][0], tles[n][1]));
   SatContainer.add(sat);
   scene.add(sat.getObj3d());
 }
@@ -463,6 +494,7 @@ function animate() {
   cameraCtrl.update();
 
   renderer.render(scene, cameraCtrl.getCameraObj());
+  labelRenderer.render(scene, cameraCtrl.getCameraObj());
 }
 animate();
 
@@ -472,6 +504,8 @@ function onWindowResize() {
 
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(width, height);
+
+  labelRenderer.setSize(width, height);
 
   cameraCtrl.getCameraObj().aspect = width / height;
   cameraCtrl.getCameraObj().updateProjectionMatrix();
