@@ -10,6 +10,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 const timer = new Timer();
 const date = new Date();
 
+// https://github.com/davincikab/mapbox_3d_models
+
 const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -24,15 +26,11 @@ document.body.appendChild(labelRenderer.domElement);
 const textureLoader = new THREE.TextureLoader();
 
 // Three.js のパネル設定とパラメータ
+const defaultTimeScale = 360;
 const params = {
-  timeScale: 360,
-  time: '',
+  timeScale: defaultTimeScale,
   cameraTracking: true,
   axes: false,
-  light: {
-    declination: 0,
-    azimuth: 0
-  },
   jcsat17: {
     height: 0,
     latitude: 0,
@@ -49,7 +47,6 @@ timer.setTimescale(params.timeScale);
 
 function panelSettings() {
   const gui = new GUI({ title: document.title });
-  gui.add(params, 'time').name('日時').listen().disable();
   gui.add(params, 'timeScale', 1, 3600, 1).name('時間スケール')
     .onChange(value => { timer.setTimescale(value) });
   gui.add(params, 'cameraTracking').name('自転に追跡');
@@ -57,11 +54,6 @@ function panelSettings() {
     .onChange(value => { showAxes(value) });
   gui.add(params, 'spaceVisible').name('星の表示')
     .onChange(value => { space.visible = value });
-  const light = gui.addFolder('光源');
-  light.add(params.light, 'declination', -23.4, 23.4, 0.1).name('赤緯')
-    .onChange(value => { directionalLightPosiotion(value, params.light.azimuth); });
-  light.add(params.light, 'azimuth', -180.0, 180.0, 0.1).name('方位')
-    .onChange(value => { directionalLightPosiotion(params.light.declination, value); });
   const jcsat17 = gui.addFolder('JCSAT-17');
   jcsat17.add(params.jcsat17, 'height').name('高度(km)').listen().disable();
   jcsat17.add(params.jcsat17, 'latitude').name('緯度(°)').listen().disable();
@@ -94,16 +86,7 @@ function createLabel(text, x, y, z) {
   label.center.set(0.5, 0.5);
   return label;
 }
-const axes = {
-  X: [21000, 0, 0],
-  Y: [0, 21000, 0],
-  Z: [0, 0, 21000]
-};
-for (let k in axes) {
-  axesHelper.add(createLabel(k, axes[k][0], axes[k][1], axes[k][2]));
-}
 showAxes(params.axes);
-
 
 // 座標変換関数
 // satellite.posiotion to Three Axes
@@ -166,20 +149,46 @@ class CameraControls {
 const cameraCtrl = new CameraControls();
 
 // 光源
+function getSunPosition(date) {
+  // https://en.wikipedia.org/wiki/Position_of_the_Sun
+  // https://icesat-2.gsfc.nasa.gov/sites/default/files/page_files/ICESat2_ATL03g_ATBD_r002.pdf
+  const T = (satellite.jday(date) - 2451545.0) / 36525;
+  const L = 280.460 + 36000.77005361 * T;
+  const gRad = THREE.MathUtils.degToRad(
+    357.528 + 35999.05034 * T
+  );
+  const lambdaRad = THREE.MathUtils.degToRad(
+    L + 1.914666471 * Math.sin(gRad) + 0.019994643 * Math.sin(2 * gRad)
+  );
+  const epsilonRad = THREE.MathUtils.degToRad(
+    23.439291 - 0.0130042 * T
+  );
+  // const rightAscensionRad = Math.atan2(Math.cos(epsilonRad) * Math.sin(lambdaRad), Math.cos(lambdaRad));
+  // const declinationRad = Math.asin(Math.sin(epsilonRad) * Math.sin(lambdaRad));
+  // const rightAscension = THREE.MathUtils.radToDeg(rightAscensionRad);
+  // const declination = THREE.MathUtils.radToDeg(declinationRad);
+  // distance of the Sun from the Earth, in astronomical units
+  // const R = 1.000140612 - 0.016708617 * Math.cos(gRad) - 0.000139589 * Math.cos(2 * gRad);
+  return {
+    // rightAscension: rightAscension,
+    // declination: declination,
+    x: Math.cos(lambdaRad),
+    y: Math.cos(epsilonRad) * Math.sin(lambdaRad),
+    z: Math.sin(epsilonRad) * Math.sin(lambdaRad)
+  };
+}
+
 // 平行光源
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 scene.add(directionalLight);
 // 並行光源の位置計算
-function directionalLightPosiotion(declination, azimuth) {
-  const theta = THREE.MathUtils.degToRad(declination);
-  const phi = THREE.MathUtils.degToRad(azimuth);
-  directionalLight.position.x = Math.cos(theta);
-  directionalLight.position.y = Math.sin(theta);
-  const x = directionalLight.position.x;
-  directionalLight.position.x = x * Math.sin(phi);
-  directionalLight.position.z = x * Math.cos(phi);
+function updateSunPosition(date) {
+  const position = toAxes(getSunPosition(date));
+  directionalLight.position.x = position.x;
+  directionalLight.position.y = position.y;
+  directionalLight.position.z = position.z;
 }
-directionalLightPosiotion(0, 0);
+updateSunPosition(date);
 // 環境光源
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
 scene.add(ambientLight);
@@ -230,7 +239,7 @@ class Earth {
     // https://www.irasutoya.com/2013/02/blog-post_8574.html
     const texture = textureLoader.load('./sekaichizu1.png');
     const geometry = new THREE.SphereGeometry(6371, 32, 32);
-    const material = new THREE.MeshStandardMaterial({ map: texture });
+    const material = new THREE.MeshLambertMaterial({ map: texture });
     const mesh = new THREE.Mesh(geometry, material);
     return mesh;
   }
@@ -333,17 +342,33 @@ class SatContainer {
 class Sat {
   constructor(tle, texture = textureLoader.load('./space_jinkoueisei.png'), scale = 1000) {
     this.tle = tle;
-    const material = new THREE.SpriteMaterial({ map: texture });
-    this.sprite = new THREE.Sprite(material);
+    this.group = new THREE.Group();
+    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
     this.sprite.scale.set(scale, scale, 1);
+    this.group.add(this.sprite);
+    this.line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(
+        [
+          new THREE.Vector3(this.sprite.position.x, this.sprite.position.y, this.sprite.position.z),
+          new THREE.Vector3(0, 0, 0)
+        ]
+      ),
+      new THREE.LineBasicMaterial({ color: 0x808080 })
+    );
+    this.group.add(this.line);
   }
   update(date) {
     const position = this.tle.update(date);
     // 衛星の位置設定
     this.sprite.position.set(position.x, position.y, position.z);
+    const positions = this.line.geometry.attributes.position.array;
+    positions[0] = position.x;
+    positions[1] = position.y;
+    positions[2] = position.z;
+    this.line.geometry.attributes.position.needsUpdate = true;
   }
   getObj3d() {
-    return this.sprite;
+    return this.group;
   }
 }
 
@@ -368,10 +393,10 @@ class Jeisakko {
     this.sprite.material.map = this.texture1;
     this.sprite.add(createLabel(
       this.tle.name,
-      this.sprite.position.x, 
+      this.sprite.position.x,
       this.sprite.position.y - 1,
       this.sprite.position.z
-      ));
+    ));
     return this.sprite;
   }
   spriteUpdate(position) {
@@ -392,14 +417,15 @@ class Jeisakko {
     }
   }
   lineInit() {
-    const points = [];
-    points.push(new THREE.Vector3(this.sprite.position.x, this.sprite.position.y, this.sprite.position.z));
-    points.push(new THREE.Vector3(0, 0, 0));
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: 0x808080 });
-    this.line = new THREE.Line(geometry, material);
-
-    //scene.add(this.line);  // todo: group.add
+    this.line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(
+        [
+          new THREE.Vector3(this.sprite.position.x, this.sprite.position.y, this.sprite.position.z),
+          new THREE.Vector3(0, 0, 0)
+        ]
+      ),
+      new THREE.LineBasicMaterial({ color: 0x808080 })
+    );
     return this.line;
   }
   lineUpdate(position) {
@@ -437,7 +463,7 @@ scene.add(iss.getObj3d());
 
 // その他衛星
 const tles = {
-  'ALOS (DAICHI)' : [
+  'ALOS (DAICHI)': [
     // ALOS (DAICHI)
     '1 28931U 06002A   24054.85954890  .00001926  00000+0  36670-3 0  9996',
     '2 28931  98.0235  10.5096 0002031 110.5210 249.6212 14.65171948964235'
@@ -474,15 +500,29 @@ for (let n in tles) {
   scene.add(sat.getObj3d());
 }
 
+let animatePause = false;
+const info = document.getElementById("info");
+const tzOffset = date.getTimezoneOffset() * 60000;
 function animate() {
   requestAnimationFrame(animate);
-  timer.update();
-  const delta = Math.floor(timer.getDelta() * 1000);
 
+  var delta = 0;
+  if (animatePause) {
+    timer.reset();
+  }
+  else {
+    timer.update();
+
+    delta = Math.floor(timer.getDelta() * 1000);
+  }
   date.setMilliseconds(date.getMilliseconds() + delta);
   const gmst = satellite.gstime(date);
 
-  params.time = date.toISOString().split('.')[0] + 'Z';
+  const time = date.toISOString().split('.')[0] + 'Z';
+  const localTime = new Date(date - tzOffset).toISOString().split('.')[0];
+  info.innerHTML = 'UTC: ' + time + '<br>\nLocal: ' + localTime;
+
+  updateSunPosition(date);
 
   earth.rotation(gmst);
 
@@ -491,12 +531,24 @@ function animate() {
   if (params.cameraTracking) {
     cameraCtrl.tracking(delta / 1000);
   }
+
   cameraCtrl.update();
 
   renderer.render(scene, cameraCtrl.getCameraObj());
   labelRenderer.render(scene, cameraCtrl.getCameraObj());
 }
 animate();
+
+function onKeydown(event) {
+  if (event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  if (event.keyCode === 32) {
+    animatePause = !animatePause;
+    return;
+  }
+}
+window.addEventListener('keydown', onKeydown);
 
 function onWindowResize() {
   const width = window.innerWidth;

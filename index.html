@@ -18,6 +18,15 @@
       background: rgba(0, 0, 0, .6);
       text-align: center;
     }
+
+    #info {
+      color: #FFF;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      display: block;
+    }
   </style>
 </head>
 
@@ -33,7 +42,9 @@
       }
     }
   </script>
+  <div id="info"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.9.0/suncalc.min.js"></script>
   <script type="module" src="main.js"></script>
 </body>
 
