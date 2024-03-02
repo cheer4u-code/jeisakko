@@ -36,11 +36,6 @@ const params = {
     latitude: 0,
     longitude: 0
   },
-  iss: {
-    height: 0,
-    latitude: 0,
-    longitude: 0
-  },
   spaceVisible: true
 };
 timer.setTimescale(params.timeScale);
@@ -58,22 +53,14 @@ function panelSettings() {
   jcsat17.add(params.jcsat17, 'height').name('高度(km)').listen().disable();
   jcsat17.add(params.jcsat17, 'latitude').name('緯度(°)').listen().disable();
   jcsat17.add(params.jcsat17, 'longitude').name('経度(°)').listen().disable();
-  const iss = gui.addFolder('ISS');
-  iss.add(params.iss, 'height').name('高度(km)').listen().disable();
-  iss.add(params.iss, 'latitude').name('緯度(°)').listen().disable();
-  iss.add(params.iss, 'longitude').name('経度(°)').listen().disable();
   gui.close();
 }
 panelSettings();
 
 // Three.jsの軸の表示
-const axesHelper = new THREE.AxesHelper(20000);
 function showAxes(show) {
-  if (show && axesHelper.parent !== scene) {
-    scene.add(axesHelper);
-  }
-  else if (axesHelper.parent === scene) {
-    scene.remove(axesHelper);
+  for (const label of axesLabels.children) {
+    label.visible = show;
   }
 }
 function createLabel(text, x, y, z) {
@@ -86,6 +73,36 @@ function createLabel(text, x, y, z) {
   label.center.set(0.5, 0.5);
   return label;
 }
+function createAxes() {
+  const group = new THREE.Group();
+  const d = 20000;
+  const axes = {
+    X: {
+      line: [new THREE.Vector3(-d * 0.9, 0, 0), new THREE.Vector3(d / 2, 0, 0)],
+      color: 0xff0000,
+      label: [d * 1.05, 0, 0]
+    },
+    Y: {
+      line: [new THREE.Vector3(0, 0, d * 0.9), new THREE.Vector3(0, 0, -d / 2)],
+      color: 0x00ff00,
+      label: [0, 0, - d * 1.05]
+    },
+    Z: {
+      line: [new THREE.Vector3(0, -d * 0.9, 0), new THREE.Vector3(0, d / 2, 0)],
+      color: 0x0000ff,
+      label: [0, d * 1.05, 0]
+    }
+  };
+  for (const t in axes) {
+    group.add(new THREE.ArrowHelper(
+      axes[t].line[1], axes[t].line[0], d * 1.9, axes[t].color, d * 0.1, d * 0.05
+    ));
+    group.add(createLabel(t, axes[t].label[0], axes[t].label[1], axes[t].label[2]));
+  }
+  return group;
+}
+const axesLabels = createAxes();
+scene.add(axesLabels);
 showAxes(params.axes);
 
 // 座標変換関数
@@ -149,25 +166,31 @@ class CameraControls {
 const cameraCtrl = new CameraControls();
 
 // 光源
-function getSunPosition(date) {
+function getSunDirection(date) {
   // https://en.wikipedia.org/wiki/Position_of_the_Sun
   // https://icesat-2.gsfc.nasa.gov/sites/default/files/page_files/ICESat2_ATL03g_ATBD_r002.pdf
   const T = (satellite.jday(date) - 2451545.0) / 36525;
+  // 平均黄経 mean longitude of the Sun
   const L = 280.460 + 36000.77005361 * T;
+  // 平均近点角 mean anomaly of the Sun
   const gRad = THREE.MathUtils.degToRad(
     357.528 + 35999.05034 * T
   );
+  // 黄経 ecliptic longitude
   const lambdaRad = THREE.MathUtils.degToRad(
     L + 1.914666471 * Math.sin(gRad) + 0.019994643 * Math.sin(2 * gRad)
   );
+  // 黄道傾斜 Obliquity of the ecliptic
   const epsilonRad = THREE.MathUtils.degToRad(
     23.439291 - 0.0130042 * T
   );
+  // 赤経(α) Right ascension
   // const rightAscensionRad = Math.atan2(Math.cos(epsilonRad) * Math.sin(lambdaRad), Math.cos(lambdaRad));
-  // const declinationRad = Math.asin(Math.sin(epsilonRad) * Math.sin(lambdaRad));
   // const rightAscension = THREE.MathUtils.radToDeg(rightAscensionRad);
+  // 赤緯(δ) Declination
+  // const declinationRad = Math.asin(Math.sin(epsilonRad) * Math.sin(lambdaRad));
   // const declination = THREE.MathUtils.radToDeg(declinationRad);
-  // distance of the Sun from the Earth, in astronomical units
+  // 地球と太陽との距離、単位は天文単位 distance of the Sun from the Earth, in astronomical units
   // const R = 1.000140612 - 0.016708617 * Math.cos(gRad) - 0.000139589 * Math.cos(2 * gRad);
   return {
     // rightAscension: rightAscension,
@@ -182,13 +205,11 @@ function getSunPosition(date) {
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 scene.add(directionalLight);
 // 並行光源の位置計算
-function updateSunPosition(date) {
-  const position = toAxes(getSunPosition(date));
-  directionalLight.position.x = position.x;
-  directionalLight.position.y = position.y;
-  directionalLight.position.z = position.z;
+function updateSunDirection(date) {
+  const position = toAxes(getSunDirection(date));
+  directionalLight.position.set(position.x, position.y, position.z);
 }
-updateSunPosition(date);
+updateSunDirection(date);
 // 環境光源
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
 scene.add(ambientLight);
@@ -291,8 +312,8 @@ class Tle {
   }
 }
 
-// TLE uses data from https://celestrak.org/.
 // JCSAT-17 TLE
+// TLE uses data from https://celestrak.org/.
 class Jcsat17Tle extends Tle {
   constructor() {
     const tleLine1 = '1 45245U 20013A   24053.64424126 -.00000318  00000+0  00000+0 0  9990';
@@ -309,30 +330,13 @@ class Jcsat17Tle extends Tle {
   }
 }
 
-// ISS (ZARYA)
-class IssTle extends Tle {
-  constructor() {
-    const tleLine1 = '1 25544U 98067A   24054.33494424  .00018013  00000+0  31983-3 0  9997';
-    const tleLine2 = '2 25544  51.6411 164.5373 0002036 314.9686  82.1277 15.50270617440747';
-    super('ISS (ZARYA)', tleLine1, tleLine2);
-  }
-  update(date) {
-    const position = super.update(date);
-    // パネルに高度、緯度、経度を表示
-    params.iss.height = round(position.height, 1);
-    params.iss.latitude = round(satellite.degreesLat(position.latitude), 1);
-    params.iss.longitude = round(satellite.degreesLong(position.longitude), 1);
-    return position;
-  }
-}
-
 class SatContainer {
   static sats = [];
   static add(sat) {
     SatContainer.sats.push(sat);
   }
   static update(date) {
-    for (let sat of SatContainer.sats) {
+    for (const sat of SatContainer.sats) {
       sat.update(date);
     }
   }
@@ -340,11 +344,20 @@ class SatContainer {
 
 // 衛星
 class Sat {
-  constructor(tle, texture = textureLoader.load('./space_jinkoueisei.png'), scale = 1000) {
+  constructor(tle, texture, scale = 1000, labelShow = false) {
     this.tle = tle;
     this.group = new THREE.Group();
     this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
+    console.log(this.sprite.material.map);
     this.sprite.scale.set(scale, scale, 1);
+    if (labelShow) {
+      this.sprite.add(createLabel(
+        this.tle.name,
+        this.sprite.position.x,
+        this.sprite.position.y - 1,
+        this.sprite.position.z
+      ));
+    }
     this.group.add(this.sprite);
     this.line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(
@@ -373,37 +386,21 @@ class Sat {
 }
 
 // ジェイサッ子
-class Jeisakko {
+class Jeisakko extends Sat {
   constructor(tle) {
-    this.tle = tle;
-    this.group = new THREE.Group();
-    // 衛星
-    this.group.add(this.spriteInit());
-    // 衛星と地球の線
-    this.group.add(this.lineInit());
-  }
-  spriteInit() {
     // https://www.skyperfectjsat.space/brand/michikachi/cm/
-    this.texture1 = textureLoader.load('./jeisakko1.png');
-    this.texture2 = textureLoader.load('./jeisakko2.png');
-    const material = new THREE.SpriteMaterial();
-    this.sprite = new THREE.Sprite(material);
-    const scale = 1500;
-    this.sprite.scale.set(scale, scale, 1);
-    this.sprite.material.map = this.texture1;
-    this.sprite.add(createLabel(
-      this.tle.name,
-      this.sprite.position.x,
-      this.sprite.position.y - 1,
-      this.sprite.position.z
-    ));
-    return this.sprite;
+    const texture1 = textureLoader.load('./jeisakko1.png');
+    const texture2 = textureLoader.load('./jeisakko2.png');
+
+    super(tle, texture1, 2000, true);
+    this.texture1 = texture1;
+    this.texture2 = texture2;
   }
-  spriteUpdate(position) {
-    // 衛星の位置設定
-    this.sprite.position.set(position.x, position.y, position.z);
+  update(date) {
+    super.update(date);
+
     // 衛星のテクスチャの変更
-    const p1 = position;
+    const p1 = this.sprite.position;
     const p2 = cameraCtrl.getCameraObj().position;
     const d1 = (p1.x ** 2 + p1.y ** 2 + p1.z ** 2) + (p2.x ** 2 + p2.y ** 2 + p2.z ** 2);
     const d2 = (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2;
@@ -416,89 +413,29 @@ class Jeisakko {
       this.sprite.material.map = this.texture2;
     }
   }
-  lineInit() {
-    this.line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(
-        [
-          new THREE.Vector3(this.sprite.position.x, this.sprite.position.y, this.sprite.position.z),
-          new THREE.Vector3(0, 0, 0)
-        ]
-      ),
-      new THREE.LineBasicMaterial({ color: 0x808080 })
-    );
-    return this.line;
-  }
-  lineUpdate(position) {
-    // ラインを衛星に追従させる
-    const positions = this.line.geometry.attributes.position.array;
-    positions[0] = position.x;
-    positions[1] = position.y;
-    positions[2] = position.z;
-    this.line.geometry.attributes.position.needsUpdate = true;
-  }
-  update(date) {
-    const position = this.tle.update(date);
-    // 衛星の位置、テクスチャ変更
-    this.spriteUpdate(position);
-    // 衛星と地球の線
-    this.lineUpdate(position);
-  }
-  getObj3d() {
-    return this.group;
-  }
 }
 const jeisakko = new Jeisakko(new Jcsat17Tle());
 SatContainer.add(jeisakko);
 scene.add(jeisakko.getObj3d());
 
-// ISS
-class Iss extends Sat {
-  constructor(tle) {
-    super(tle, textureLoader.load('./iss.png'), 1500);
-  }
-}
-const iss = new Iss(new IssTle());
-SatContainer.add(iss);
-scene.add(iss.getObj3d());
-
 // その他衛星
-const tles = {
-  'ALOS (DAICHI)': [
-    // ALOS (DAICHI)
-    '1 28931U 06002A   24054.85954890  .00001926  00000+0  36670-3 0  9996',
-    '2 28931  98.0235  10.5096 0002031 110.5210 249.6212 14.65171948964235'
-  ],
-  'QZS-1 (MICHIBIKI-1)': [
-    // QZS-1 (MICHIBIKI-1)
-    '1 37158U 10045A   24053.83766090 -.00000035  00000+0  00000+0 0  9994',
-    '2 37158  43.0976 125.7389 0001594 153.3097 203.3186  0.87715799 48971'
-  ],
-  'QZS-2 (MICHIBIKI-2)': [
-    // QZS-2 (MICHIBIKI-2)
-    '1 42738U 17028A   24053.42871997 -.00000137  00000+0  00000+0 0  9993',
-    '2 42738  40.7612 255.4098 0748088 270.1575 282.1365  1.00267160 24658'
-  ],
-  'QZS-3 (MICHIBIKI-3)': [
-    // QZS-3 (MICHIBIKI-3)
-    '1 42917U 17048A   24054.93313174 -.00000353  00000+0  00000+0 0  9999',
-    '2 42917   0.0676 213.5175 0001334 115.0595 287.6737  1.00275216 23790'
-  ],
-  'QZS-3 (MICHIBIKI-3)': [
-    // QZS-4 (MICHIBIKI-4)
-    '1 42965U 17062A   24053.71455556 -.00000343  00000+0  00000+0 0  9993',
-    '2 42965  40.5653 354.2547 0750364 269.4665 284.4449  1.00286785 23337'
-  ],
-  'QZS-1R': [
-    // QZS-1R
-    '1 49336U 21096A   24054.43287800 -.00000277  00000+0  00000+0 0  9995',
-    '2 49336  35.7053  92.2720 0747386 269.1147  79.0900  1.00299827  8536'
-  ],
-};
-for (let n in tles) {
-  const sat = new Sat(new Tle(n, tles[n][0], tles[n][1]));
-  SatContainer.add(sat);
-  scene.add(sat.getObj3d());
-}
+fetch('tles.json')
+  .then(response => response.json())
+  .then(data => {
+    const textures = {};
+    for (const t in data.textures) {
+      textures[t] = textureLoader.load(data.textures[t]);
+    }
+    for (const n in data.tles) {
+      let texture = textures['default'];
+      if (n in textures) {
+        texture = textures[n];
+      }
+      const sat = new Sat(new Tle(n, data.tles[n][0], data.tles[n][1]), texture);
+      SatContainer.add(sat);
+      scene.add(sat.getObj3d());
+    }
+  });
 
 let animatePause = false;
 const info = document.getElementById("info");
@@ -520,9 +457,9 @@ function animate() {
 
   const time = date.toISOString().split('.')[0] + 'Z';
   const localTime = new Date(date - tzOffset).toISOString().split('.')[0];
-  info.innerHTML = 'UTC: ' + time + '<br>\nLocal: ' + localTime;
+  info.innerHTML = `<table><tr><td>UTC</td><td>${time}</td></tr><tr><td>LT</td><td>${localTime}</td></tr></table>`;
 
-  updateSunPosition(date);
+  updateSunDirection(date);
 
   earth.rotation(gmst);
 
