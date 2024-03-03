@@ -151,10 +151,7 @@ class CameraControls {
   }
   tracking(delta) {
     const theta = delta / 86400 * Math.PI * 2;
-    const x = this.camera.position.x;
-    const z = this.camera.position.z;
-    this.camera.position.x = x * Math.cos(-theta) - z * Math.sin(-theta);
-    this.camera.position.z = x * Math.sin(-theta) + z * Math.cos(-theta);
+    this.camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), theta);
   }
   update() {
     this.controls.update();
@@ -202,7 +199,7 @@ function getSunDirection(date) {
 }
 
 // 平行光源
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
 scene.add(directionalLight);
 // 並行光源の位置計算
 function updateSunDirection(date) {
@@ -211,7 +208,7 @@ function updateSunDirection(date) {
 }
 updateSunDirection(date);
 // 環境光源
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.25);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
 scene.add(ambientLight);
 
 // 星
@@ -222,13 +219,18 @@ class Space {
   }
   getPositions(count) {
     const positions = new Float32Array(count * 3);
+    const y = new THREE.Vector3(0, 1, 0),
+      z = new THREE.Vector3(0, 0, 1);
     for (let i = 0; i < count; i++) {
       const radius = THREE.MathUtils.randInt(150000, 500000);
-      const theta = THREE.MathUtils.randFloat(0, Math.PI);
-      const phi = THREE.MathUtils.randFloat(0, Math.PI * 2);
-      positions[i * 3] = radius * Math.sin(theta) * Math.cos(phi);
-      positions[i * 3 + 1] = radius * Math.cos(theta);
-      positions[i * 3 + 2] = radius * Math.sin(theta) * Math.sin(phi);
+      const theta = THREE.MathUtils.randFloat(-Math.PI, Math.PI);
+      const phi = THREE.MathUtils.randFloat(-Math.PI / 2, Math.PI / 2);
+      const p = new THREE.Vector3(radius, 0, 0);
+      p.applyAxisAngle(z, phi);
+      p.applyAxisAngle(y, theta);
+      positions[i * 3] = p.x;
+      positions[i * 3 + 1] = p.y;
+      positions[i * 3 + 2] = p.z;
     }
     return positions;
   }
@@ -253,16 +255,53 @@ space.visible = params.spaceVisible;
 // 地球
 class Earth {
   constructor() {
+    this.earthRadius = 6371;
+    this.segments = 72;
     this.group = new THREE.Group();
     this.group.add(this.earth());
   }
   earth() {
     // https://www.irasutoya.com/2013/02/blog-post_8574.html
-    const texture = textureLoader.load('./sekaichizu1.png');
-    const geometry = new THREE.SphereGeometry(6371, 32, 32);
-    const material = new THREE.MeshLambertMaterial({ map: texture });
+    const geometry = new THREE.SphereGeometry(this.earthRadius, this.segments, this.segments / 2);
+    const material = new THREE.MeshLambertMaterial();
     const mesh = new THREE.Mesh(geometry, material);
+    textureLoader.load('/sekaichizu1.png',
+      function (texture) {
+        mesh.material.map = texture;
+        mesh.material.needsUpdate = true;
+      }
+    );
     return mesh;
+  }
+  circleLine(latitude, longitude, distance) {
+    const P = new THREE.Vector3(this.earthRadius, 0, 0);
+    const segments = this.segments * 2;
+    const points = [];
+    const x = new THREE.Vector3(1, 0, 0),
+      y = new THREE.Vector3(0, 1, 0),
+      z = new THREE.Vector3(0, 0, 1);
+    P.applyAxisAngle(z, distance / this.earthRadius);
+    for (let i = 0; i <= segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      const p = new THREE.Vector3().copy(P);
+      p.applyAxisAngle(x, a);
+      p.applyAxisAngle(z, latitude);
+      p.applyAxisAngle(y, longitude);
+      points.push(p);
+    }
+    return new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({
+        color: 0x808080,
+        transparent: true,
+        opacity: 0.5
+      })
+    );
+  }
+  addCircleLine(latitude, longitude, distance) {
+    const lat = THREE.MathUtils.degToRad(latitude);
+    const long = THREE.MathUtils.degToRad(longitude);
+    this.group.add(this.circleLine(lat, long, distance));
   }
   house(latitude, longitude) {
     const position = geodeticToAxes(250, latitude, longitude);
@@ -287,7 +326,10 @@ class Earth {
   }
 }
 const earth = new Earth();
+// 東京の緯度経度
 earth.addHouse(35.6895, 139.69171);
+// 東京から1000km
+earth.addCircleLine(35.6894, 139.6917, 1000);
 scene.add(earth.getObj3d());
 
 // 軌道
