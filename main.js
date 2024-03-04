@@ -265,7 +265,7 @@ class Earth {
     const geometry = new THREE.SphereGeometry(this.earthRadius, this.segments, this.segments / 2);
     const material = new THREE.MeshLambertMaterial();
     const mesh = new THREE.Mesh(geometry, material);
-    textureLoader.load('/sekaichizu1.png',
+    textureLoader.load('./sekaichizu1.png',
       function (texture) {
         mesh.material.map = texture;
         mesh.material.needsUpdate = true;
