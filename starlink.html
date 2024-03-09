@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <title>earth</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #info {
+      color: #FFF;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+        "three/adsons/controls/OrbitControls": "https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js",
+        "three/adsons/misc/Timer": "https://unpkg.com/three@0.161.0/examples/jsm/misc/Timer.js"
+      }
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/5.0.0/satellite.js"></script>
+  <div id="info"></div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/adsons/controls/OrbitControls';
+    import { Timer } from 'three/adsons/misc/Timer';
+
+    const earthRadius = 6378.137;
+    const eartSegments = 72;
+    const maxDistance = earthRadius * 100,
+      minDistance = earthRadius * 1.5,
+      defaultDistance = earthRadius * 5;
+
+    const timer = new Timer();
+    const date = new Date();
+    let gmst = satellite.gstime(date);
+    // timer.setTimescale(10);
+
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, maxDistance);
+    camera.position.set(defaultDistance, 0, 0);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.maxDistance = maxDistance;
+    controls.minDistance = minDistance;
+
+    // 太陽の方向
+    function sunDirection(date) {
+      const T = (satellite.jday(date) - 2451545.0) / 36525;
+      const L = 280.460 + 36000.77005361 * T;
+      const gRad = THREE.MathUtils.degToRad(357.528 + 35999.05034 * T);
+      const lambdaRad = THREE.MathUtils.degToRad(
+        L + 1.914666471 * Math.sin(gRad) + 0.019994643 * Math.sin(2 * gRad)
+      );
+      const epsilonRad = THREE.MathUtils.degToRad(23.439291 - 0.0130042 * T);
+      return {
+        x: Math.cos(lambdaRad),
+        y: Math.cos(epsilonRad) * Math.sin(lambdaRad),
+        z: Math.sin(epsilonRad) * Math.sin(lambdaRad)
+      };
+    }
+
+    // 平行光源
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    scene.add(directionalLight);
+    function updateDirectionalLight() {
+      const position = satellite.eciToEcf(sunDirection(date), gmst)
+      directionalLight.position.copy(new THREE.Vector3(position.x, position.z, -position.y).normalize());
+    }
+    updateDirectionalLight();
+    // 環境光源
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+    scene.add(ambientLight);
+
+    // https://www.solarsystemscope.com/textures/
+    new THREE.TextureLoader().load('earth_map.png',
+      function (texture) {
+        const earth = new THREE.Mesh(
+          new THREE.SphereGeometry(earthRadius, eartSegments, eartSegments / 2),
+          new THREE.MeshLambertMaterial({ map: texture })
+        );
+        scene.add(earth);
+      },
+      // onProgress callback currently not supported in THREE.js
+      undefined,
+      function () {
+        info.log('Failed to load texture.');
+      }
+    );
+
+    function updateSatellite(object) {
+      const positionAndVelocity = satellite.propagate(object.userData.record, date);
+      const position = satellite.eciToEcf(positionAndVelocity.position, gmst);
+      object.position.x = position.x;
+      object.position.y = position.z;
+      object.position.z = -position.y;
+      const geo = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
+      object.rotation.z = geo.latitude;
+      object.rotation.y = geo.longitude;
+    }
+
+    const starlink = new THREE.Group();
+    function updateStarlink() {
+      for (const object of starlink.children) {
+        updateSatellite(object);
+      }
+    }
+    (async () => {
+      //const response = await fetch("https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle");
+      const response = await fetch("starlink.txt");
+      const data = await response.text();
+      const lines = await data.split(/\s*\n/);
+      const count = Math.floor(lines.length / 3);
+      const size = 30;
+      const geometry = new THREE.BoxGeometry(size, size, size);
+      for (let i = 0; i < count; i++) {
+        const object = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ color: 0xffffff }));
+        const name = lines[i * 3],
+          tleLine1 = lines[i * 3 + 1],
+          tleLine2 = lines[i * 3 + 2];
+        object.name = name;
+        object.userData.record = satellite.twoline2satrec(tleLine1, tleLine2);
+        updateSatellite(object);
+        starlink.add(object);
+      }
+      scene.add(starlink);
+    })();
+
+    const pointer = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    let intersected = null;
+    const info = document.getElementById("info");
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      timer.update();
+      let delta = Math.floor(timer.getDelta() * 1000);
+      date.setMilliseconds(date.getMilliseconds() + delta);
+      gmst = satellite.gstime(date);
+      updateDirectionalLight();
+      updateStarlink();
+
+      controls.update();
+      raycaster.setFromCamera(pointer, camera);
+      const intersects = raycaster.intersectObjects(starlink.children, false);
+      if (intersects.length > 0) {
+        if (intersects[0].object != intersected) {
+          if (intersected) {
+            intersected.material.emissive.setHex(0xffffff);
+          }
+          intersected = intersects[0].object;
+          info.innerText = intersected.name;
+          intersected.material.emissive.setHex(0xff0000);
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    function onWindowResize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+    onWindowResize();
+    window.addEventListener('resize', onWindowResize);
+
+    function onPointerMove(event) {
+      pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
+    }
+    document.addEventListener('mousemove', onPointerMove);
+  </script>
+</body>
+
+</html>
