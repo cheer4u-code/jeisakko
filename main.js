@@ -26,7 +26,7 @@ document.body.appendChild(labelRenderer.domElement);
 const textureLoader = new THREE.TextureLoader();
 
 // Three.js のパネル設定とパラメータ
-const defaultTimeScale = 360;
+const defaultTimeScale = 1;
 const params = {
   timeScale: defaultTimeScale,
   cameraTracking: true,
@@ -261,47 +261,17 @@ class Earth {
     this.group.add(this.earth());
   }
   earth() {
-    // https://www.irasutoya.com/2013/02/blog-post_8574.html
     const geometry = new THREE.SphereGeometry(this.earthRadius, this.segments, this.segments / 2);
     const material = new THREE.MeshLambertMaterial();
     const mesh = new THREE.Mesh(geometry, material);
-    textureLoader.load('./sekaichizu1.png',
+    // https://www.solarsystemscope.com/textures/
+    textureLoader.load('./earth_map.png',
       function (texture) {
         mesh.material.map = texture;
         mesh.material.needsUpdate = true;
       }
     );
     return mesh;
-  }
-  circleLine(latitude, longitude, distance) {
-    const P = new THREE.Vector3(this.earthRadius, 0, 0);
-    const segments = this.segments * 2;
-    const points = [];
-    const x = new THREE.Vector3(1, 0, 0),
-      y = new THREE.Vector3(0, 1, 0),
-      z = new THREE.Vector3(0, 0, 1);
-    P.applyAxisAngle(z, distance / this.earthRadius);
-    for (let i = 0; i <= segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const p = new THREE.Vector3().copy(P);
-      p.applyAxisAngle(x, a);
-      p.applyAxisAngle(z, latitude);
-      p.applyAxisAngle(y, longitude);
-      points.push(p);
-    }
-    return new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(points),
-      new THREE.LineBasicMaterial({
-        color: 0x808080,
-        transparent: true,
-        opacity: 0.5
-      })
-    );
-  }
-  addCircleLine(latitude, longitude, distance) {
-    const lat = THREE.MathUtils.degToRad(latitude);
-    const long = THREE.MathUtils.degToRad(longitude);
-    this.group.add(this.circleLine(lat, long, distance));
   }
   house(latitude, longitude) {
     const position = geodeticToAxes(250, latitude, longitude);
@@ -328,8 +298,6 @@ class Earth {
 const earth = new Earth();
 // 東京の緯度経度
 earth.addHouse(35.6895, 139.69171);
-// 東京から1000km
-earth.addCircleLine(35.6894, 139.6917, 1000);
 scene.add(earth.getObj3d());
 
 // 軌道
@@ -390,11 +358,11 @@ class Sat {
     this.tle = tle;
     this.group = new THREE.Group();
     this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture }));
-    console.log(this.sprite.material.map);
     this.sprite.scale.set(scale, scale, 1);
+    this.sprite.name = this.tle.name;
     if (labelShow) {
       this.sprite.add(createLabel(
-        this.tle.name,
+        this.sprite.name,
         this.sprite.position.x,
         this.sprite.position.y - 1,
         this.sprite.position.z
