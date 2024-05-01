@@ -2,9 +2,9 @@
 // スカパージェイサッ子
 //
 import * as THREE from 'three';
-import { OrbitControls } from 'three/adsons/controls/OrbitControls';
-import { GUI } from 'three/adsons/libs/lil-gui';
-import { Timer } from 'three/adsons/misc/Timer';
+import { OrbitControls } from 'three/addons/controls/OrbitControls';
+import { GUI } from 'three/addons/libs/lil-gui';
+import { Timer } from 'three/addons/misc/Timer';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer';
 
 const timer = new Timer();
