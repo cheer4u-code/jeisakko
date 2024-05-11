@@ -89,21 +89,29 @@
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
     scene.add(ambientLight);
 
-    // https://www.solarsystemscope.com/textures/
-    new THREE.TextureLoader().load('earth_map.png',
-      function (texture) {
-        const earth = new THREE.Mesh(
-          new THREE.SphereGeometry(earthRadius, eartSegments, eartSegments / 2),
-          new THREE.MeshLambertMaterial({ map: texture })
-        );
-        scene.add(earth);
-      },
-      // onProgress callback currently not supported in THREE.js
-      undefined,
-      function () {
-        info.log('Failed to load texture.');
-      }
+    const earth = new THREE.Mesh(
+      new THREE.SphereGeometry(earthRadius, eartSegments, eartSegments / 2),
+      new THREE.MeshLambertMaterial({ map: new THREE.TextureLoader().load('earth_map.png') }),
     );
+    scene.add(earth);
+
+    // // https://www.solarsystemscope.com/textures/
+    // new THREE.TextureLoader().load('earth_map.png',
+    //   function (texture) {
+    //     // const earth = new THREE.Mesh(
+    //     //   new THREE.SphereGeometry(earthRadius, eartSegments, eartSegments / 2),
+    //     //   new THREE.MeshLambertMaterial({ map: texture })
+    //     // );
+    //     // scene.add(earth);
+    //     earth.material.map = texture;
+    //     earth.material.needsUpdate = true;
+    //   },
+    //   // onProgress callback currently not supported in THREE.js
+    //   undefined,
+    //   function () {
+    //     info.log('Failed to load texture.');
+    //   }
+    // );
 
     function updateSatellite(object) {
       const positionAndVelocity = satellite.propagate(object.userData.record, date);
