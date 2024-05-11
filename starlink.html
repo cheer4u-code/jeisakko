@@ -107,13 +107,22 @@
 
     function updateSatellite(object) {
       const positionAndVelocity = satellite.propagate(object.userData.record, date);
-      const position = satellite.eciToEcf(positionAndVelocity.position, gmst);
-      object.position.x = position.x;
-      object.position.y = position.z;
-      object.position.z = -position.y;
-      const geo = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
-      object.rotation.z = geo.latitude;
-      object.rotation.y = geo.longitude;
+      if (!object.visible) {
+        return;
+      }
+      if (!object.userData.record.error) {
+        const position = satellite.eciToEcf(positionAndVelocity.position, gmst);
+        object.position.x = position.x;
+        object.position.y = position.z;
+        object.position.z = -position.y;
+        const geo = satellite.eciToGeodetic(positionAndVelocity.position, gmst);
+        object.rotation.z = geo.latitude;
+        object.rotation.y = geo.longitude;
+      }
+      else {
+        console.log(object.userData.record);
+        object.visible = false;
+      }
     }
 
     const starlink = new THREE.Group();
